@@ -1,320 +1,464 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Clean Water Detector</title>
-
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
-
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Clean Water Detector — Enhanced</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
 <style>
-    body {
-        margin: 0;
-        font-family: "Inter", sans-serif;
-        color: #033e6b;
-        overflow-x: hidden;
-        background: #e9f8ff;
-    }
+  :root{
+    --bg:#eaf9ff;
+    --accent:#4db8ff;
+    --accent-dark:#045c9c;
+    --text:#033e6b;
+    --clean-blue: #3fb0ff;
+    --dirty-red: #ff6b6b;
+    --maybe-yellow: #f0c419;
+  }
 
-    /* ============================
-       FLOATING WATER DROPLETS
-    ============================ */
-    .droplet {
-        position: fixed;
-        bottom: -20px;
-        width: 15px;
-        height: 20px;
-        background: rgba(173, 216, 255, 0.5);
-        border-radius: 50% 50% 60% 60%;
-        filter: blur(1px);
-        animation: rise 6s linear infinite;
-        z-index: -2;
-    }
+  /* Page */
+  html,body{height:100%;margin:0;background:var(--bg);font-family:"Inter",sans-serif;color:var(--text);-webkit-font-smoothing:antialiased}
+  .container{max-width:980px;margin:32px auto;padding:0 20px}
 
-    @keyframes rise {
-        0% { transform: translateY(0) scale(1); opacity: 0.8; }
-        100% { transform: translateY(-110vh) scale(0.5); opacity: 0; }
-    }
+  /* Header / Logo */
+  header{
+    display:flex;align-items:center;gap:12px;justify-content:center;padding:28px 12px;background:rgba(255,255,255,0.8);
+    border-radius:12px;box-shadow:0 6px 18px rgba(9,30,63,0.06);position:relative;z-index:6;
+  }
+  .logo{
+    width:62px;height:62px;border-radius:14px;background:linear-gradient(135deg,var(--accent),#bfe9ff);
+    display:flex;align-items:center;justify-content:center;font-size:28px;box-shadow:0 6px 14px rgba(0,0,0,0.08)
+  }
+  .title{font-size:22px;font-weight:700;color:var(--accent-dark)}
 
-    /* Make randomized droplets */
-    .droplet:nth-child(1) { left: 10%; animation-duration: 7s; }
-    .droplet:nth-child(2) { left: 20%; animation-duration: 6s; }
-    .droplet:nth-child(3) { left: 30%; animation-duration: 8s; }
-    .droplet:nth-child(4) { left: 50%; animation-duration: 5s; }
-    .droplet:nth-child(5) { left: 65%; animation-duration: 7s; }
-    .droplet:nth-child(6) { left: 80%; animation-duration: 9s; }
+  /* Nav */
+  nav{display:flex;justify-content:center;gap:26px;margin-top:14px}
+  nav a{color:var(--accent-dark);text-decoration:none;font-weight:600}
+  nav a:hover{text-decoration:underline}
 
-    /* ============================
-       INTERACTIVE RIPPLE CURSOR
-    ============================ */
-    #ripple {
-        position: fixed;
-        width: 120px;
-        height: 120px;
-        border-radius: 50%;
-        pointer-events: none;
-        background: radial-gradient(circle, rgba(255,255,255,0.7), rgba(179,224,255,0.3));
-        transform: translate(-50%, -50%);
-        mix-blend-mode: screen;
-        opacity: 0.7;
-        transition: transform .15s ease-out;
-        z-index: -1;
-    }
+  /* Sections */
+  section.card{background:#fff;border-radius:14px;padding:20px;margin-top:24px;box-shadow:0 8px 28px rgba(9,30,63,0.06);}
+  h2{color:var(--accent-dark);margin:0 0 10px 0}
 
-    /* ============================
-       HEADER + LOGO
-    ============================ */
-    header {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 12px;
-        padding: 30px 20px;
-        background: #ffffffaa;
-        backdrop-filter: blur(8px);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-        animation: fadeIn 1s ease;
-    }
+  /* Buttons */
+  .btn{background:var(--accent);color:white;border:none;padding:10px 14px;border-radius:10px;font-weight:600;cursor:pointer;display:inline-flex;gap:10px;align-items:center}
+  .btn:active{transform:translateY(1px)}
 
-    .logo {
-        width: 55px;
-        height: 55px;
-        border-radius: 50%;
-        background: linear-gradient(135deg, #4cc3ff, #b3e7ff);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: white;
-        font-size: 28px;
-        font-weight: bold;
-        box-shadow: 0 3px 6px rgba(0,0,0,0.15);
-    }
+  /* Webcam area */
+  #webcam-wrap{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap}
+  #webcam-container{background:linear-gradient(180deg,#f8fdff,#ffffff);padding:12px;border-radius:10px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.6)}
+  canvas {border-radius:8px;display:block}
 
-    .header-title {
-        font-size: 28px;
-        font-weight: 700;
-        color: #045c9c;
-    }
+  /* labels */
+  #label-container div{font-size:16px;margin:6px 0}
 
-    /* ============================
-       NAV BAR
-    ============================ */
-    nav {
-        background: #b7e3ff;
-        padding: 12px 20px;
-        display: flex;
-        justify-content: center;
-        gap: 40px;
-        position: sticky;
-        top: 0;
-        z-index: 10;
-        backdrop-filter: blur(6px);
-        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        animation: fadeIn 1s ease-out;
-    }
+  /* Gauge (SVG based) */
+  .gauge-wrap{width:220px;height:120px;padding:6px;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .gauge {
+    width:190px;height:100px;
+  }
+  .gauge .label{font-weight:700;margin-top:6px}
 
-    nav a {
-        color: #033e6b;
-        text-decoration: none;
-        font-weight: 600;
-        font-size: 16px;
-        position: relative;
-    }
+  /* Facts card */
+  .facts{width:280px;padding:12px;border-radius:10px;background:linear-gradient(180deg,#f8ffff,#ffffff);box-shadow:0 6px 18px rgba(9,30,63,0.04)}
+  .fact-text{font-size:14px;min-height:56px;display:flex;align-items:center;justify-content:center;text-align:center;padding:6px}
 
-    nav a::after {
-        content: "";
-        position: absolute;
-        left: 0;
-        bottom: -3px;
-        width: 100%;
-        height: 2px;
-        background: #045c9c;
-        transform: scaleX(0);
-        transform-origin: left;
-        transition: transform .3s ease;
-    }
-    nav a:hover::after { transform: scaleX(1); }
+  /* Floating droplets (background) */
+  .droplet{
+    position:fixed;bottom:-40px;background:linear-gradient(180deg,rgba(255,255,255,0.8),rgba(180,230,255,0.35));
+    width:14px;height:20px;border-radius:50% 50% 60% 60%;filter:blur(.3px);opacity:.85;
+    z-index:0;pointer-events:none;
+  }
 
-    /* ============================
-       SECTIONS
-    ============================ */
-    section {
-        max-width: 800px;
-        margin: 60px auto;
-        padding: 25px;
-        background: white;
-        border-radius: 14px;
-        box-shadow: 0 3px 12px rgba(0,0,0,0.08);
-        animation: slideUp .9s ease both;
-    }
+  /* cute cartoon fish */
+  .fish{
+    position:fixed;left:-120px;bottom:22vh;z-index:1;pointer-events:none;transform:scale(0.95);
+    animation: swim 12s linear infinite;
+  }
+  @keyframes swim{
+    0%{left:-160px;transform:scaleX(1) translateY(0)}
+    25%{transform:scaleX(1) translateY(-8px)}
+    50%{left:110%;transform:scaleX(-1) translateY(0)}
+    75%{transform:scaleX(-1) translateY(8px)}
+    100%{left:-160px;transform:scaleX(1) translateY(0)}
+  }
 
-    @keyframes fadeIn {
-        from { opacity: 0; }
-        to { opacity: 1; }
-    }
+  /* Ripple follow */
+  #ripple{position:fixed;width:140px;height:140px;border-radius:50%;pointer-events:none;background:radial-gradient(circle at 40% 30%, rgba(255,255,255,0.75), rgba(179,224,255,0.2));mix-blend-mode:screen;opacity:.68;transform:translate(-50%,-50%) scale(.85);transition:transform .12s linear;z-index:2}
 
-    @keyframes slideUp {
-        from { opacity: 0; transform: translateY(25px); }
-        to { opacity: 1; transform: translateY(0); }
-    }
+  /* Loading overlay */
+  #loading {
+    position:fixed;inset:0;background:linear-gradient(180deg,rgba(255,255,255,0.95),rgba(235,249,255,0.9));display:flex;align-items:center;justify-content:center;z-index:50;
+    transition:opacity .45s ease;
+  }
+  .loader-card{background:linear-gradient(180deg,#fff,#f8feff);padding:28px;border-radius:14px;box-shadow:0 18px 40px rgba(9,30,63,0.08);display:flex;gap:18px;align-items:center}
+  .loading-droplets{display:flex;gap:8px}
+  .loading-droplets div{width:14px;height:18px;background:linear-gradient(180deg,#bfe9ff,#79c7ff);border-radius:50% 50% 60% 60%;animation: loadJump 0.8s infinite ease-in-out}
+  .loading-droplets div:nth-child(2){animation-delay:.12s}
+  .loading-droplets div:nth-child(3){animation-delay:.22s}
+  @keyframes loadJump{0%{transform:translateY(0)}50%{transform:translateY(-14px)}100%{transform:translateY(0)}}
 
-    h1, h2 {
-        color: #045c9c;
-        margin-top: 0;
-    }
+  /* clean glow pulse */
+  .glow-pulse{
+    box-shadow:0 0 0 rgba(63,176,255,0.0);
+    transition:box-shadow .35s ease;
+  }
+  .glow-on{box-shadow:0 0 80px rgba(63,176,255,0.18) !important;transition:box-shadow .3s ease;}
 
-    /* BUTTON WITH RIPPLE */
-    button {
-        background: #4db8ff;
-        color: white;
-        border: none;
-        padding: 12px 20px;
-        font-size: 16px;
-        border-radius: 8px;
-        cursor: pointer;
-        overflow: hidden;
-        position: relative;
-        transition: transform 0.15s ease;
-    }
-
-    button:hover { transform: translateY(-2px); }
-
-    button::after {
-        content: "";
-        position: absolute;
-        width: 0;
-        height: 0;
-        background: rgba(255,255,255,0.5);
-        border-radius: 50%;
-        transform: translate(-50%, -50%);
-        opacity: 0;
-        pointer-events: none;
-    }
-
-    button:active::after {
-        width: 200px;
-        height: 200px;
-        top: 50%;
-        left: 50%;
-        opacity: 1;
-        transition: width .4s ease, height .4s ease, opacity 1s ease;
-    }
-
-    #webcam-container { margin-top: 15px; }
+  /* responsive */
+  @media (max-width:880px){
+    .gauge-wrap{width:100%}
+    #webcam-wrap{flex-direction:column;align-items:center}
+    .facts{width:100%}
+  }
 </style>
 </head>
-
 <body>
 
-<!-- FLOATING WATER DROPLETS -->
-<div class="droplet"></div>
-<div class="droplet"></div>
-<div class="droplet"></div>
-<div class="droplet"></div>
-<div class="droplet"></div>
-<div class="droplet"></div>
+<!-- Floating droplets (background) -->
+<div class="droplet" style="left:8%;animation:rise 8s linear infinite;"></div>
+<div class="droplet" style="left:18%;animation:rise 10s linear infinite;opacity:.9;"></div>
+<div class="droplet" style="left:36%;animation:rise 7s linear infinite;opacity:.85;"></div>
+<div class="droplet" style="left:58%;animation:rise 9s linear infinite;opacity:.8;"></div>
+<div class="droplet" style="left:76%;animation:rise 11s linear infinite;opacity:.9;"></div>
 
-<!-- INTERACTIVE RIPPLE -->
+<!-- interactive ripple -->
 <div id="ripple"></div>
 
-<!-- HEADER WITH LOGO -->
-<header>
-    <div class="logo">💧</div>
-    <div class="header-title">Clean Water Detector</div>
-</header>
+<!-- cute cartoon fish (SVG) -->
+<div class="fish" aria-hidden="true">
+  <!-- simple colorful cartoon fish SVG -->
+  <svg width="140" height="80" viewBox="0 0 220 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="g1" x1="0" x2="1">
+        <stop offset="0" stop-color="#66ccff"/>
+        <stop offset="1" stop-color="#2aa6ff"/>
+      </linearGradient>
+    </defs>
+    <!-- body -->
+    <ellipse cx="100" cy="60" rx="60" ry="34" fill="url(#g1)"/>
+    <!-- tail -->
+    <path d="M160 60 L205 40 L205 80 Z" fill="#7fd1ff"/>
+    <!-- fin -->
+    <path d="M95 40 C85 28,65 28,58 42" fill="#5bd0ff" opacity="0.95"/>
+    <!-- eye -->
+    <circle cx="82" cy="52" r="6" fill="#052034"/>
+    <circle cx="80.5" cy="50.5" r="2.2" fill="#fff"/>
+  </svg>
+</div>
 
-<!-- NAV BAR -->
-<nav>
-    <a href="#about">About</a>
-    <a href="#instructions">Instructions</a>
+<!-- Loading overlay -->
+<div id="loading" role="status" aria-live="polite">
+  <div class="loader-card">
+    <div>
+      <div style="font-weight:700;color:var(--accent-dark);margin-bottom:8px">Loading AI model</div>
+      <div style="font-size:13px;color:#345;opacity:.9">Preparing the water detector — this usually takes a few seconds.</div>
+    </div>
+    <div style="width:22px"></div>
+    <div class="loading-droplets" aria-hidden="true">
+      <div></div><div></div><div></div>
+    </div>
+  </div>
+</div>
+
+<div class="container glow-pulse" id="page-root">
+  <header>
+    <div class="logo" aria-hidden="true">💧</div>
+    <div>
+      <div class="title">Clean Water Detector</div>
+      <div style="font-size:12px;color:#2b5d82;margin-top:4px">Real-time water cleanliness classification using Teachable Machine</div>
+    </div>
+  </header>
+
+  <nav style="margin-top:14px">
+    <a href="#about">About</a> &nbsp;·&nbsp;
+    <a href="#instructions">Instructions</a> &nbsp;·&nbsp;
     <a href="#model">Model</a>
-</nav>
+  </nav>
 
-<!-- ABOUT SECTION -->
-<section id="about">
-    <h2>About the Project</h2>
-    <p>
-        This tool uses a Teachable Machine model to analyze water and classify it
-        as <strong>clean</strong> or <strong>dirty</strong>.  
-        It's designed to help people quickly check water quality using their webcam.
-    </p>
-</section>
+  <!-- ABOUT + FACTS -->
+  <section class="card" id="about" style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap">
+    <div style="flex:1;min-width:260px">
+      <h2>About</h2>
+      <p style="margin:8px 0 0 0">
+        This tool uses a Teachable Machine image model to analyze water visible to your camera and classify it as <strong>Clean</strong> or <strong>Dirty</strong>.
+        It's designed to give a quick visual assessment for field demos, learning, and prototypes — not a certified lab test.
+      </p>
+    </div>
 
-<!-- INSTRUCTIONS -->
-<section id="instructions">
+    <div class="facts" aria-live="polite">
+      <div style="font-weight:700;margin-bottom:8px;color:var(--accent-dark);text-align:center">Water Knowledge</div>
+      <div class="fact-text" id="fact-text">Loading tips & facts...</div>
+      <div style="margin-top:8px;font-size:12px;text-align:center;color:#17607f">Tip: Improve accuracy with steady lighting and a close, focused sample.</div>
+    </div>
+  </section>
+
+  <!-- INSTRUCTIONS -->
+  <section class="card" id="instructions">
     <h2>Instructions</h2>
     <ul>
-        <li>Click <strong>Start</strong> to enable the camera.</li>
-        <li>Hold a water sample in view.</li>
-        <li>The AI will instantly classify it.</li>
+      <li>Click <button class="btn" id="start-btn-small">Start</button> (or the Start button below) to enable the camera.</li>
+      <li>Hold the water sample steadily in view (good lighting helps).</li>
+      <li>Watch the gauge and labels for the model’s assessment.</li>
     </ul>
-</section>
+  </section>
 
-<!-- MODEL SECTION -->
-<section id="model">
+  <!-- MODEL AREA -->
+  <section class="card" id="model">
     <h2>Run the Model</h2>
-    <button type="button" onclick="init()">Start</button>
-    <div id="webcam-container"></div>
-    <div id="label-container"></div>
-</section>
+    <div id="webcam-wrap" style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap">
+      <div id="webcam-container">
+        <button class="btn" id="start-btn">Start</button>
+        <div id="canvas-holder" style="margin-top:12px"></div>
+        <div id="label-container" style="margin-top:10px"></div>
+      </div>
 
-<!-- Teachable Machine Scripts -->
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <!-- gauge -->
+        <div class="gauge-wrap card" style="padding:12px;">
+          <svg class="gauge" viewBox="0 0 200 100" aria-hidden="true">
+            <!-- background arc -->
+            <path d="M 20 85 A 80 80 0 0 1 180 85" stroke="#ecf3fb" stroke-width="18" fill="none" stroke-linecap="round"/>
+            <!-- dynamic arc -->
+            <path id="gauge-arc" d="M 20 85 A 80 80 0 0 1 180 85" stroke="#3fb0ff" stroke-width="18" fill="none" stroke-linecap="round" stroke-dasharray="0 1000" transform="rotate(0 100 50)"/>
+            <!-- center text -->
+            <text id="gauge-percent" x="100" y="60" text-anchor="middle" font-size="22" font-weight="700" fill="#045c9c">--%</text>
+          </svg>
+          <div class="label" style="text-align:center;font-size:13px;color:#175d82">Water Quality</div>
+        </div>
+
+        <!-- facts small and status -->
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="background:#fff;padding:12px;border-radius:10px;box-shadow:0 6px 20px rgba(9,30,63,0.04)">
+            <div style="font-weight:700;color:var(--accent-dark);margin-bottom:6px">Model status</div>
+            <div id="model-status" style="font-size:14px;color:#2b5d82">Waiting to start</div>
+          </div>
+
+          <div style="background:#fff;padding:12px;border-radius:10px;box-shadow:0 6px 20px rgba(9,30,63,0.04);min-width:220px">
+            <div style="font-weight:700;color:var(--accent-dark);margin-bottom:6px">Quick tips</div>
+            <ul style="margin:0;padding-left:18px;font-size:13px">
+              <li>Use a plain background behind the sample.</li>
+              <li>Keep camera steady and close to the water.</li>
+              <li>Avoid strong reflections and glares.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<!-- Teachable Machine scripts (provided by user earlier) -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
 
 <script>
-    /* ===============================
-       INTERACTIVE RIPPLE EFFECT
-    =============================== */
-    const ripple = document.getElementById("ripple");
-    document.addEventListener("mousemove", e => {
-        ripple.style.left = e.clientX + "px";
-        ripple.style.top = e.clientY + "px";
-        ripple.style.transform = "translate(-50%, -50%) scale(1)";
-    });
+/* ============================
+   Helper: create floating droplets rise animation keyframes
+   (Used inline; simple CSS keyframes already used above)
+   ============================ */
+(function addRiseKeyframes(){
+  const style = document.createElement('style');
+  style.innerHTML = `
+    @keyframes rise{
+      0%{transform:translateY(0);opacity:.9}
+      100%{transform:translateY(-120vh);opacity:0}
+    }`;
+  document.head.appendChild(style);
+})();
 
-    /* ===============================
-       TEACHABLE MACHINE MODEL
-    =============================== */
-    const URL = "./my_model/";
-    let model, webcam, labelContainer, maxPredictions;
+/* ============================
+   Facts rotation
+   ============================ */
+const facts = [
+  "💧 Over 70% of Earth is water — but only a small fraction is drinkable.",
+  "♻️ A single plastic bottle can take around 450 years to break down.",
+  "🌍 Conserving clean water is vital for health, food, and ecosystems.",
+  "🔬 This demo is for visual checks only — not a lab-grade test.",
+  "💡 Tip: Clearer images + good lighting improve model predictions."
+];
+let factIndex = 0;
+const factEl = document.getElementById('fact-text');
+function rotateFact(){
+  factEl.style.opacity = 0;
+  setTimeout(()=> {
+    factEl.textContent = facts[factIndex];
+    factEl.style.opacity = 1;
+    factIndex = (factIndex+1) % facts.length;
+  },300);
+}
+rotateFact();
+setInterval(rotateFact,10000);
 
-    async function init() {
-        const modelURL = URL + "model.json";
-        const metadataURL = URL + "metadata.json";
+/* ============================
+   Interactive ripple follows mouse
+   ============================ */
+const ripple = document.getElementById('ripple');
+document.addEventListener('mousemove', e => {
+  ripple.style.left = e.clientX + 'px';
+  ripple.style.top = e.clientY + 'px';
+  ripple.style.transform = 'translate(-50%,-50%) scale(1)';
+});
 
-        model = await tmImage.load(modelURL, metadataURL);
-        maxPredictions = model.getTotalClasses();
+/* ============================
+   Loading overlay control
+   ============================ */
+const loading = document.getElementById('loading');
+function hideLoading(){ loading.style.opacity = 0; setTimeout(()=>loading.style.display='none',500) }
 
-        const flip = true;
-        webcam = new tmImage.Webcam(200, 200, flip);
-        await webcam.setup();
-        await webcam.play();
-        window.requestAnimationFrame(loop);
+/* ============================
+   Teachable Machine model + UI logic
+   ============================ */
+const URL = "./my_model/"; // keep the user's original path
+let model, webcam, maxPredictions, labelContainer, canvasHolder;
+const startBtn = document.getElementById('start-btn');
+const startBtnSmall = document.getElementById('start-btn-small');
+const modelStatus = document.getElementById('model-status');
+const gaugeArc = document.getElementById('gauge-arc');
+const gaugePercent = document.getElementById('gauge-percent');
+const pageRoot = document.getElementById('page-root');
 
-        document.getElementById("webcam-container").appendChild(webcam.canvas);
-        labelContainer = document.getElementById("label-container");
-        labelContainer.innerHTML = "";
+startBtn.addEventListener('click', init);
+startBtnSmall.addEventListener('click', init);
 
-        for (let i = 0; i < maxPredictions; i++) {
-            labelContainer.appendChild(document.createElement("div"));
-        }
+async function init(){
+  try {
+    modelStatus.textContent = 'Loading model...';
+    startBtn.disabled = true;
+    startBtnSmall.disabled = true;
+
+    // load model (no progress API in tmImage; show loader until loaded)
+    model = await tmImage.load(URL + 'model.json', URL + 'metadata.json');
+    maxPredictions = model.getTotalClasses();
+
+    labelContainer = document.getElementById('label-container');
+    labelContainer.innerHTML = '';
+    for(let i=0;i<maxPredictions;i++){
+      const d = document.createElement('div');
+      d.textContent = '';
+      labelContainer.appendChild(d);
     }
 
-    async function loop() {
-        webcam.update();
-        await predict();
-        window.requestAnimationFrame(loop);
-    }
+    // start webcam
+    webcam = new tmImage.Webcam(320, 240, true);
+    await webcam.setup();
+    await webcam.play();
+    canvasHolder = document.getElementById('canvas-holder');
+    canvasHolder.innerHTML = ''; // clear
+    canvasHolder.appendChild(webcam.canvas);
 
-    async function predict() {
-        const prediction = await model.predict(webcam.canvas);
-        for (let i = 0; i < maxPredictions; i++) {
-            labelContainer.childNodes[i].innerHTML =
-                prediction[i].className + ": " + prediction[i].probability.toFixed(2);
-        }
-    }
+    modelStatus.textContent = 'Model loaded — running';
+    hideLoading();
+
+    // begin loop
+    window.requestAnimationFrame(loop);
+  } catch (e) {
+    console.error(e);
+    modelStatus.textContent = 'Failed to load model — check console and model path';
+    startBtn.disabled = false;
+    startBtnSmall.disabled = false;
+  }
+}
+
+async function loop(){
+  if(!webcam) return;
+  webcam.update();
+  await predict();
+  window.requestAnimationFrame(loop);
+}
+
+/* Determine 'clean' score robustly:
+   - Prefer any class name containing 'clean', 'clear' -> use that prob
+   - Else if 'dirty', 'contamin', 'pollut' present -> use 1 - dirtyProb
+   - Else fallback: if there are 3+ classes, attempt to map 'clean' vs 'dirty' by highest/lowest
+*/
+function extractCleanScore(predictions){
+  const lowerNames = predictions.map(p => p.className.toLowerCase());
+  let cleanIdx = lowerNames.findIndex(n => /clean|clear|pure|safe/.test(n));
+  if(cleanIdx >= 0) return predictions[cleanIdx].probability;
+
+  let dirtyIdx = lowerNames.findIndex(n => /dirty|contamin|pollut|turbid|unclean/.test(n));
+  if(dirtyIdx >= 0) return 1 - predictions[dirtyIdx].probability;
+
+  // fallback heuristics:
+  // if one class named 'clean' absent, but there are exactly 3 classes, assume index 0=clean,1=maybe,2=dirty
+  if(predictions.length === 3){
+    // pick best: assume first class represents 'clean' in many teachable machine exports (user may have different mapping)
+    return predictions[0].probability;
+  }
+
+  // else use highest-probability class as 'clean-likeness' (not ideal, but a fallback)
+  const maxp = predictions.reduce((a,b)=> a.probability>=b.probability?a:b);
+  return maxp.probability;
+}
+
+/* Map score (0..1) to arc dash length and color */
+function updateGauge(score){
+  const pct = Math.round(score*100);
+  gaugePercent.textContent = pct + '%';
+  // arc length mapping: full arc length (approx path length) -> use stroke-dasharray
+  // for the simple arc used, we will set dasharray to (percent/100)*max
+  const total = 250; // chosen visual length for smoothness
+  const dash = (pct/100) * total;
+  gaugeArc.setAttribute('stroke-dasharray', `${dash} ${total}`);
+  // color by thresholds
+  let color = 'var(--clean-blue)';
+  if(score >= 0.8) color = 'var(--clean-blue)';
+  else if(score >= 0.4) color = 'var(--maybe-yellow)';
+  else color = 'var(--dirty-red)';
+  gaugeArc.setAttribute('stroke', color);
+}
+
+/* glow pulse */
+let glowTimeout;
+function setGlow(on){
+  if(on){
+    pageRoot.classList.add('glow-on');
+    clearTimeout(glowTimeout);
+    glowTimeout = setTimeout(()=> pageRoot.classList.remove('glow-on'), 700);
+  } else {
+    pageRoot.classList.remove('glow-on');
+  }
+}
+
+async function predict(){
+  if(!model) return;
+  const predictions = await model.predict(webcam.canvas);
+  // update labels
+  predictions.forEach((p,i)=>{
+    const node = labelContainer && labelContainer.childNodes[i];
+    if(node) node.innerHTML = `${p.className}: ${p.probability.toFixed(2)}`;
+  });
+
+  // compute clean score
+  const cleanScore = extractCleanScore(predictions);
+  updateGauge(cleanScore);
+
+  // update model status text with best class
+  const best = predictions.reduce((a,b)=> a.probability>=b.probability?a:b);
+  document.getElementById('model-status').textContent = `Top: ${best.className} (${best.probability.toFixed(2)})`;
+
+  // blue glow pulse if 'clean' >= 0.8
+  if(cleanScore >= 0.8) setGlow(true);
+
+  // subtle breathing animation: scale ripple slightly based on score
+  const scale = 0.85 + cleanScore*0.6;
+  ripple.style.transform = `translate(-50%,-50%) scale(${scale})`;
+}
+
+/* Provide some initial visual polish: hide loading once model loaded (done in init) */
+/* Also give accessible fallback if model fails */
+
+/* Optional: Close loading screen after a timeout in case model fails to load on some browsers */
+setTimeout(() => {
+  // If still visible after 15s and model isn't loaded, give user control
+  if(document.getElementById('loading') && model==undefined){
+    document.getElementById('loading').querySelector('.loader-card').style.opacity = '0.95';
+    // leave it visible; user can retry by clicking Start
+  }
+},15000);
+
 </script>
-
 </body>
 </html>
