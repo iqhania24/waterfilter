@@ -1,59 +1,320 @@
-<div>Teachable Machine Image Model</div>
-<button type="button" onclick="init()">Start</button>
-<div id="webcam-container"></div>
-<div id="label-container"></div>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Clean Water Detector</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+
+<style>
+    body {
+        margin: 0;
+        font-family: "Inter", sans-serif;
+        color: #033e6b;
+        overflow-x: hidden;
+        background: #e9f8ff;
+    }
+
+    /* ============================
+       FLOATING WATER DROPLETS
+    ============================ */
+    .droplet {
+        position: fixed;
+        bottom: -20px;
+        width: 15px;
+        height: 20px;
+        background: rgba(173, 216, 255, 0.5);
+        border-radius: 50% 50% 60% 60%;
+        filter: blur(1px);
+        animation: rise 6s linear infinite;
+        z-index: -2;
+    }
+
+    @keyframes rise {
+        0% { transform: translateY(0) scale(1); opacity: 0.8; }
+        100% { transform: translateY(-110vh) scale(0.5); opacity: 0; }
+    }
+
+    /* Make randomized droplets */
+    .droplet:nth-child(1) { left: 10%; animation-duration: 7s; }
+    .droplet:nth-child(2) { left: 20%; animation-duration: 6s; }
+    .droplet:nth-child(3) { left: 30%; animation-duration: 8s; }
+    .droplet:nth-child(4) { left: 50%; animation-duration: 5s; }
+    .droplet:nth-child(5) { left: 65%; animation-duration: 7s; }
+    .droplet:nth-child(6) { left: 80%; animation-duration: 9s; }
+
+    /* ============================
+       INTERACTIVE RIPPLE CURSOR
+    ============================ */
+    #ripple {
+        position: fixed;
+        width: 120px;
+        height: 120px;
+        border-radius: 50%;
+        pointer-events: none;
+        background: radial-gradient(circle, rgba(255,255,255,0.7), rgba(179,224,255,0.3));
+        transform: translate(-50%, -50%);
+        mix-blend-mode: screen;
+        opacity: 0.7;
+        transition: transform .15s ease-out;
+        z-index: -1;
+    }
+
+    /* ============================
+       HEADER + LOGO
+    ============================ */
+    header {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        padding: 30px 20px;
+        background: #ffffffaa;
+        backdrop-filter: blur(8px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        animation: fadeIn 1s ease;
+    }
+
+    .logo {
+        width: 55px;
+        height: 55px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #4cc3ff, #b3e7ff);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 28px;
+        font-weight: bold;
+        box-shadow: 0 3px 6px rgba(0,0,0,0.15);
+    }
+
+    .header-title {
+        font-size: 28px;
+        font-weight: 700;
+        color: #045c9c;
+    }
+
+    /* ============================
+       NAV BAR
+    ============================ */
+    nav {
+        background: #b7e3ff;
+        padding: 12px 20px;
+        display: flex;
+        justify-content: center;
+        gap: 40px;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        backdrop-filter: blur(6px);
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        animation: fadeIn 1s ease-out;
+    }
+
+    nav a {
+        color: #033e6b;
+        text-decoration: none;
+        font-weight: 600;
+        font-size: 16px;
+        position: relative;
+    }
+
+    nav a::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        bottom: -3px;
+        width: 100%;
+        height: 2px;
+        background: #045c9c;
+        transform: scaleX(0);
+        transform-origin: left;
+        transition: transform .3s ease;
+    }
+    nav a:hover::after { transform: scaleX(1); }
+
+    /* ============================
+       SECTIONS
+    ============================ */
+    section {
+        max-width: 800px;
+        margin: 60px auto;
+        padding: 25px;
+        background: white;
+        border-radius: 14px;
+        box-shadow: 0 3px 12px rgba(0,0,0,0.08);
+        animation: slideUp .9s ease both;
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+
+    @keyframes slideUp {
+        from { opacity: 0; transform: translateY(25px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    h1, h2 {
+        color: #045c9c;
+        margin-top: 0;
+    }
+
+    /* BUTTON WITH RIPPLE */
+    button {
+        background: #4db8ff;
+        color: white;
+        border: none;
+        padding: 12px 20px;
+        font-size: 16px;
+        border-radius: 8px;
+        cursor: pointer;
+        overflow: hidden;
+        position: relative;
+        transition: transform 0.15s ease;
+    }
+
+    button:hover { transform: translateY(-2px); }
+
+    button::after {
+        content: "";
+        position: absolute;
+        width: 0;
+        height: 0;
+        background: rgba(255,255,255,0.5);
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    button:active::after {
+        width: 200px;
+        height: 200px;
+        top: 50%;
+        left: 50%;
+        opacity: 1;
+        transition: width .4s ease, height .4s ease, opacity 1s ease;
+    }
+
+    #webcam-container { margin-top: 15px; }
+</style>
+</head>
+
+<body>
+
+<!-- FLOATING WATER DROPLETS -->
+<div class="droplet"></div>
+<div class="droplet"></div>
+<div class="droplet"></div>
+<div class="droplet"></div>
+<div class="droplet"></div>
+<div class="droplet"></div>
+
+<!-- INTERACTIVE RIPPLE -->
+<div id="ripple"></div>
+
+<!-- HEADER WITH LOGO -->
+<header>
+    <div class="logo">💧</div>
+    <div class="header-title">Clean Water Detector</div>
+</header>
+
+<!-- NAV BAR -->
+<nav>
+    <a href="#about">About</a>
+    <a href="#instructions">Instructions</a>
+    <a href="#model">Model</a>
+</nav>
+
+<!-- ABOUT SECTION -->
+<section id="about">
+    <h2>About the Project</h2>
+    <p>
+        This tool uses a Teachable Machine model to analyze water and classify it
+        as <strong>clean</strong> or <strong>dirty</strong>.  
+        It's designed to help people quickly check water quality using their webcam.
+    </p>
+</section>
+
+<!-- INSTRUCTIONS -->
+<section id="instructions">
+    <h2>Instructions</h2>
+    <ul>
+        <li>Click <strong>Start</strong> to enable the camera.</li>
+        <li>Hold a water sample in view.</li>
+        <li>The AI will instantly classify it.</li>
+    </ul>
+</section>
+
+<!-- MODEL SECTION -->
+<section id="model">
+    <h2>Run the Model</h2>
+    <button type="button" onclick="init()">Start</button>
+    <div id="webcam-container"></div>
+    <div id="label-container"></div>
+</section>
+
+<!-- Teachable Machine Scripts -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
-<script type="text/javascript">
-    // More API functions here:
-    // https://github.com/googlecreativelab/teachablemachine-community/tree/master/libraries/image
 
-    // the link to your model provided by Teachable Machine export panel
+<script>
+    /* ===============================
+       INTERACTIVE RIPPLE EFFECT
+    =============================== */
+    const ripple = document.getElementById("ripple");
+    document.addEventListener("mousemove", e => {
+        ripple.style.left = e.clientX + "px";
+        ripple.style.top = e.clientY + "px";
+        ripple.style.transform = "translate(-50%, -50%) scale(1)";
+    });
+
+    /* ===============================
+       TEACHABLE MACHINE MODEL
+    =============================== */
     const URL = "./my_model/";
-
     let model, webcam, labelContainer, maxPredictions;
 
-    // Load the image model and setup the webcam
     async function init() {
         const modelURL = URL + "model.json";
         const metadataURL = URL + "metadata.json";
 
-        // load the model and metadata
-        // Refer to tmImage.loadFromFiles() in the API to support files from a file picker
-        // or files from your local hard drive
-        // Note: the pose library adds "tmImage" object to your window (window.tmImage)
         model = await tmImage.load(modelURL, metadataURL);
         maxPredictions = model.getTotalClasses();
 
-        // Convenience function to setup a webcam
-        const flip = true; // whether to flip the webcam
-        webcam = new tmImage.Webcam(200, 200, flip); // width, height, flip
-        await webcam.setup(); // request access to the webcam
+        const flip = true;
+        webcam = new tmImage.Webcam(200, 200, flip);
+        await webcam.setup();
         await webcam.play();
         window.requestAnimationFrame(loop);
 
-        // append elements to the DOM
         document.getElementById("webcam-container").appendChild(webcam.canvas);
         labelContainer = document.getElementById("label-container");
-        for (let i = 0; i < maxPredictions; i++) { // and class labels
+        labelContainer.innerHTML = "";
+
+        for (let i = 0; i < maxPredictions; i++) {
             labelContainer.appendChild(document.createElement("div"));
         }
     }
 
     async function loop() {
-        webcam.update(); // update the webcam frame
+        webcam.update();
         await predict();
         window.requestAnimationFrame(loop);
     }
 
-    // run the webcam image through the image model
     async function predict() {
-        // predict can take in an image, video or canvas html element
         const prediction = await model.predict(webcam.canvas);
         for (let i = 0; i < maxPredictions; i++) {
-            const classPrediction =
+            labelContainer.childNodes[i].innerHTML =
                 prediction[i].className + ": " + prediction[i].probability.toFixed(2);
-            labelContainer.childNodes[i].innerHTML = classPrediction;
         }
     }
 </script>
+
+</body>
+</html>
