@@ -70,36 +70,11 @@ canvas{border-radius:8px;display:block}
   backface-visibility:hidden; -webkit-backface-visibility:hidden;
   filter:drop-shadow(0 6px 10px rgba(5,36,52,0.06));
   opacity:.95;
+  transform-style:preserve-3d;
 }
 
 /* tiny base SVG size controlled via inline style --scale variable */
 .fish svg{ width:100%; height:auto; display:block; transform-origin:center center; }
-
-/* horizontal swim L->R animation (uses CSS variables set inline) */
-@keyframes swimLR {
-  0% { transform: translateX(-18vw) translateY(var(--y-offset)) rotateY(0deg) scale(var(--scale)); }
-  50% { transform: translateX(52vw) translateY(calc(var(--y-offset) + var(--bob))) rotateY(0deg) scale(var(--scale)); }
-  100% { transform: translateX(122vw) translateY(var(--y-offset)) rotateY(0deg) scale(var(--scale)); }
-}
-
-/* horizontal swim R->L (flip via rotateY 180deg so fish faces left; no teleport) */
-@keyframes swimRL {
-  0% { transform: translateX(122vw) translateY(var(--y-offset)) rotateY(180deg) scale(var(--scale)); }
-  50% { transform: translateX(52vw) translateY(calc(var(--y-offset) + var(--bob))) rotateY(180deg) scale(var(--scale)); }
-  100% { transform: translateX(-18vw) translateY(var(--y-offset)) rotateY(180deg) scale(var(--scale)); }
-}
-
-/* gentle vertical bob is baked into the keyframes as --bob (see JS) */
-
-/* we use custom properties for duration and delay so each fish varies */
-.fish.anim-lr{ animation: swimLR var(--duration)s linear var(--delay)s infinite; }
-.fish.anim-rl{ animation: swimRL var(--duration)s linear var(--delay)s infinite; }
-
-/* reduce motion on small screens a bit */
-@media (max-width:880px){
-  :root{ --fish-count:18; --caustics-opacity:0.12; }
-  .caustics{ animation-duration:26s; }
-}
 
 /* loading overlay & ripple kept similar to your original */
 #ripple{position:fixed;width:140px;height:140px;border-radius:50%;pointer-events:none;background:radial-gradient(circle at 40% 30%, rgba(255,255,255,0.75), rgba(179,224,255,0.18));mix-blend-mode:screen;opacity:.68;transform:translate(-50%,-50%) scale(.85);transition:transform .12s linear;z-index:3}
@@ -114,7 +89,7 @@ canvas{border-radius:8px;display:block}
 /* small accessibility helper for focus outlines */
 :focus{ outline:3px solid rgba(77,184,255,0.25); outline-offset:2px; }
 
-/* performance hint: keep only transform/opacity animations where possible */
+/* bubble keyframe placeholder (JS injects actual keyframes once) */
 </style>
 </head>
 <body>
@@ -231,7 +206,7 @@ canvas{border-radius:8px;display:block}
   <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
 
-  <!-- Main script: fish generator + bubbles + model logic -->
+  <!-- Main script: JS-controlled schooling fish + bubbles + model logic -->
   <script defer>
   (() => {
     'use strict';
@@ -289,6 +264,7 @@ canvas{border-radius:8px;display:block}
 
     /* rotate facts */
     function rotateFacts(){
+      if(!factEl) return;
       factEl.style.opacity = 0;
       setTimeout(()=>{ factEl.textContent = FACTS[factIndex]; factEl.style.opacity = 1; factIndex = (factIndex + 1) % FACTS.length; }, 300);
     }
@@ -300,92 +276,267 @@ canvas{border-radius:8px;display:block}
     });
 
     /* ------------------------------
-       Fish generator (Calm & Clean)
-       - creates many small fish with CSS animations
-       - uses CSS variables for per-fish randomness
+       JS-controlled schooling fish (B1 Calm School)
+       - lightweight boids tuned for slow calm motion
+       - uses transform for GPU acceleration
        ------------------------------ */
+
+    // defensive layer checks
+    if(!fishLayer || !bubbleLayer || !causticsLayer){
+      console.warn('Background layers missing; background effects aborted.');
+    }
+
+    // small RNG helper
     function rand(min, max){ return Math.random() * (max - min) + min; }
-    function makeFishSVG(){
-      // inline simple fish svg to reuse
+
+    // fish configuration (tweak these constants to adjust behavior)
+    const FISH_COUNT = Math.max(6, parseInt(getComputedStyle(document.documentElement).getPropertyValue('--fish-count')) || 20);
+    const WIDTH = window.innerWidth;
+    const HEIGHT = window.innerHeight;
+    // schooling parameters
+    const NEIGHBOR_RADIUS = 120; // px
+    const MAX_SPEED = 0.5; // px per ms (very slow, calm)
+    const MAX_FORCE = 0.0008; // steering magnitude
+    const COHESION_WEIGHT = 0.0025;
+    const ALIGNMENT_WEIGHT = 0.0020;
+    const SEPARATION_WEIGHT = 0.0060;
+    const TARGET_WEIGHT = 0.0005; // mild attraction to gentle wandering target
+
+    // container for fish objects
+    const fishList = [];
+
+    // create unique fish SVG generator (unique gradient id per fish)
+    function fishSVG(idSuffix, scale=1){
+      const gid = 'fishGrad_' + idSuffix;
+      // lighter, small fish shape
       return `
-        <svg viewBox="0 0 220 120" aria-hidden="true" focusable="false" role="img">
+        <svg viewBox="0 0 220 120" aria-hidden="true" focusable="false" role="img" xmlns="http://www.w3.org/2000/svg">
           <defs>
-            <linearGradient id="gA" x1="0" x2="1">
-              <stop offset="0" stop-color="#7fd1ff"/>
-              <stop offset="1" stop-color="#55b6ff"/>
+            <linearGradient id="${gid}" x1="0" x2="1">
+              <stop offset="0" stop-color="#8fd8ff"/>
+              <stop offset="1" stop-color="#5dbfff"/>
+            </linearGradient>
+            <linearGradient id="${gid}_tail" x1="0" x2="1">
+              <stop offset="0" stop-color="#c6efff"/>
+              <stop offset="1" stop-color="#9ad8ff"/>
             </linearGradient>
           </defs>
-          <ellipse cx="100" cy="60" rx="56" ry="30" fill="url(#gA)"/>
-          <path d="M157 60 L200 42 L200 78 Z" fill="#9fdcff"/>
-          <circle cx="82" cy="54" r="5" fill="#052034"/>
-          <circle cx="80" cy="52" r="1.9" fill="#fff"/>
+          <ellipse cx="100" cy="60" rx="${56*scale}" ry="${30*scale}" fill="url(#${gid})"/>
+          <path d="M${157*scale} 60 L${200*scale} ${42*scale} L${200*scale} ${78*scale} Z" fill="url(#${gid}_tail)"/>
+          <circle cx="${82*scale}" cy="${54*scale}" r="${5*scale}" fill="#052034"/>
+          <circle cx="${80*scale}" cy="${52*scale}" r="${1.6*scale}" fill="#fff"/>
         </svg>
       `;
     }
 
-    function spawnFish(count = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--fish-count')) || 20){
-      fishLayer.innerHTML = ''; // clear
-      const frag = document.createDocumentFragment();
-      for(let i=0;i<count;i++){
-        const el = document.createElement('div');
-        el.className = 'fish';
-        // direction: L->R or R->L
-        const dir = (Math.random() > 0.5) ? 'lr' : 'rl';
-        el.classList.add(dir === 'lr' ? 'anim-lr' : 'anim-rl');
+    // Fish class holds physics state and DOM element
+    class Fish {
+      constructor(i){
+        this.id = i;
+        // position in px
+        this.pos = {
+          x: rand(0, window.innerWidth),
+          y: rand(window.innerHeight * 0.08, window.innerHeight * 0.86)
+        };
+        // velocity in px/ms
+        const ang = rand(0, Math.PI * 2);
+        this.vel = { x: Math.cos(ang) * rand(0.02, 0.16), y: Math.sin(ang) * rand(0.01, 0.08) };
+        this.acc = { x: 0, y: 0 };
+        this.scale = rand(0.32, 0.82); // visual scale
+        this.opacity = rand(0.62, 0.98);
 
-        // randomize parameters (duration seconds, delay sec, vertical offset px, bob px, scale)
-        const duration = rand(10, 28); // slower gentle movement
-        const delay = rand(-duration, 6); // negative delays make layer already in-motion
-        const topPct = rand(6, 86); // avoid extreme edges
-        const scale = rand(0.32, 0.78); // small fish
-        const opacity = rand(0.65, 0.98);
-        const bob = rand(6, 18); // vertical bob amplitude in px
-        // set CSS vars to control animation
-        el.style.setProperty('--duration', duration);
-        el.style.setProperty('--delay', delay);
-        el.style.setProperty('--y-offset', topPct + 'vh');
-        el.style.setProperty('--bob', bob + 'px');
-        el.style.setProperty('--scale', scale);
-        el.style.opacity = opacity;
+        // target point for mild wandering (changes slowly)
+        this.wanderTarget = { x: rand(0, window.innerWidth), y: rand(0, window.innerHeight) };
+        this.wanderTimer = rand(3000, 11000);
 
-        // slight horizontal offset to vary depth illusion (transform translateX controlled by keyframes)
-        // innerHTML fish svg
-        el.innerHTML = makeFishSVG();
-        frag.appendChild(el);
+        // create DOM node
+        this.node = document.createElement('div');
+        this.node.className = 'fish';
+        this.node.style.width = (120 * this.scale) + 'px';
+        this.node.style.opacity = this.opacity;
+        // inject SVG with unique gradients
+        this.node.innerHTML = fishSVG(i, 1);
+        // initial transform
+        this.applyTransform();
+
+        // append
+        fishLayer.appendChild(this.node);
       }
-      fishLayer.appendChild(frag);
+
+      // apply transform & rotation to DOM
+      applyTransform(){
+        // compute angle from velocity (face in direction of travel)
+        const angle = Math.atan2(this.vel.y, this.vel.x) * (180 / Math.PI);
+        // rotation around Y to flip when moving left (simulate subtle 3D)
+        let rotateY = 0;
+        if(this.vel.x < 0) rotateY = 180;
+        // position using translate3d for GPU
+        this.node.style.transform = `translate3d(${this.pos.x}px, ${this.pos.y}px, 0) rotateY(${rotateY}deg) rotate(${angle}deg) scale(${this.scale})`;
+      }
+
+      // limit magnitude
+      limit(vec, max){
+        const m = Math.hypot(vec.x, vec.y);
+        if(m > max){
+          vec.x = (vec.x / m) * max;
+          vec.y = (vec.y / m) * max;
+        }
+      }
+
+      // update physics using neighbor information
+      update(dt, neighbors){
+        // reset acceleration
+        this.acc.x = 0; this.acc.y = 0;
+
+        // cohesion: steer to average position of neighbors
+        let coh = { x: 0, y: 0 }, cohCount = 0;
+        // alignment: steer toward average velocity
+        let ali = { x: 0, y: 0 }, aliCount = 0;
+        // separation: avoid crowding
+        let sep = { x: 0, y: 0 };
+
+        for(const n of neighbors){
+          if(n === this) continue;
+          const dx = n.pos.x - this.pos.x;
+          const dy = n.pos.y - this.pos.y;
+          const dist = Math.hypot(dx, dy);
+          if(dist < 1) continue;
+          if(dist < NEIGHBOR_RADIUS){
+            coh.x += n.pos.x; coh.y += n.pos.y; cohCount++;
+            ali.x += n.vel.x; ali.y += n.vel.y; aliCount++;
+            // separation: stronger when closer
+            const s = (NEIGHBOR_RADIUS - dist) / NEIGHBOR_RADIUS;
+            sep.x -= (dx / dist) * s;
+            sep.y -= (dy / dist) * s;
+          }
+        }
+
+        if(cohCount > 0){
+          coh.x /= cohCount; coh.y /= cohCount;
+          // vector toward cohesion center
+          let steer = { x: coh.x - this.pos.x, y: coh.y - this.pos.y };
+          this.limit(steer, MAX_FORCE * 1000);
+          this.acc.x += steer.x * COHESION_WEIGHT;
+          this.acc.y += steer.y * COHESION_WEIGHT;
+        }
+
+        if(aliCount > 0){
+          ali.x /= aliCount; ali.y /= aliCount;
+          // desired change toward alignment
+          let steer = { x: ali.x - this.vel.x, y: ali.y - this.vel.y };
+          this.limit(steer, MAX_FORCE * 1000);
+          this.acc.x += steer.x * ALIGNMENT_WEIGHT;
+          this.acc.y += steer.y * ALIGNMENT_WEIGHT;
+        }
+
+        // apply separation
+        this.acc.x += sep.x * SEPARATION_WEIGHT;
+        this.acc.y += sep.y * SEPARATION_WEIGHT;
+
+        // mild wandering target force (keeps schools moving slowly across screen)
+        this.wanderTimer -= dt;
+        if(this.wanderTimer <= 0){
+          this.wanderTarget.x = rand(0, window.innerWidth);
+          this.wanderTarget.y = rand(window.innerHeight * 0.08, window.innerHeight * 0.86);
+          this.wanderTimer = rand(4000, 12000);
+        }
+        const tx = this.wanderTarget.x - this.pos.x;
+        const ty = this.wanderTarget.y - this.pos.y;
+        const tdist = Math.hypot(tx, ty) || 1;
+        this.acc.x += (tx / tdist) * TARGET_WEIGHT * 60;
+        this.acc.y += (ty / tdist) * TARGET_WEIGHT * 60;
+
+        // integrate velocity
+        this.vel.x += this.acc.x * dt;
+        this.vel.y += this.acc.y * dt;
+
+        // limit speed
+        this.limit(this.vel, MAX_SPEED);
+
+        // integrate position
+        this.pos.x += this.vel.x * dt;
+        this.pos.y += this.vel.y * dt;
+
+        // keep within vertical bounds (wrap horizontally)
+        const margin = 8;
+        const minY = window.innerHeight * 0.05;
+        const maxY = window.innerHeight * 0.95;
+        if(this.pos.y < minY) this.pos.y = minY + rand(0, 4);
+        if(this.pos.y > maxY) this.pos.y = maxY - rand(0, 4);
+
+        // horizontal wrap-around (gentle)
+        if(this.pos.x < -80) this.pos.x = window.innerWidth + rand(20, 120);
+        if(this.pos.x > window.innerWidth + 80) this.pos.x = -rand(20, 120);
+
+        // slight vertical wobble for organic motion
+        const wobble = Math.sin((performance.now() / 1000) + this.id) * 0.35;
+        this.pos.y += wobble * (0.25 + this.scale * 0.6);
+
+        // apply DOM transform
+        this.applyTransform();
+      }
     }
 
-    /* bubbles: gentle rising bubbles for background */
-    function spawnBubbles(count = 22){
+    // spawn fish list
+    function spawnSchool(count){
+      fishLayer.innerHTML = '';
+      fishList.length = 0;
+      for(let i=0;i<count;i++){
+        const f = new Fish(i);
+        fishList.push(f);
+      }
+    }
+
+    // main fish update loop
+    let lastTime = performance.now();
+    function fishStep(now){
+      const dt = Math.min(60, now - lastTime); // ms (cap to avoid spikes)
+      lastTime = now;
+
+      // neighbor queries - naive O(n^2); fine for ~30-60 fish
+      for(const f of fishList){
+        // build neighbor list
+        const neighbors = [];
+        for(const g of fishList){
+          const dx = g.pos.x - f.pos.x, dy = g.pos.y - f.pos.y;
+          if(Math.abs(dx) < NEIGHBOR_RADIUS && Math.abs(dy) < NEIGHBOR_RADIUS){
+            const dist = Math.hypot(dx, dy);
+            if(dist < NEIGHBOR_RADIUS) neighbors.push(g);
+          }
+        }
+        f.update(dt, neighbors);
+      }
+
+      animationFrameId = requestAnimationFrame(fishStep);
+    }
+
+    /* ------------------------------
+       Bubbles & Caustics (gentle)
+       ------------------------------ */
+    function spawnBubbles(count = Math.max(10, Math.floor(FISH_COUNT * 0.7))){
       bubbleLayer.innerHTML = '';
       const frag = document.createDocumentFragment();
       for(let i=0;i<count;i++){
         const b = document.createElement('div');
         b.setAttribute('aria-hidden','true');
-        // random bubble element: use simple circle via CSS
         const size = Math.round(rand(6,28));
         const left = rand(2, 96);
         const delay = rand(0, 12);
-        const duration = rand(6, 24);
+        const duration = rand(8, 26);
         b.style.position = 'absolute';
         b.style.left = left + 'vw';
-        b.style.bottom = '-6vh';
+        b.style.bottom = '-8vh';
         b.style.width = size + 'px';
         b.style.height = size + 'px';
         b.style.borderRadius = '50%';
         b.style.background = 'radial-gradient(circle at 35% 30%, rgba(255,255,255,0.9), rgba(180,230,255,0.35))';
-        b.style.opacity = String(rand(0.06,0.28));
+        b.style.opacity = String(rand(0.04,0.22));
         b.style.filter = 'blur(0.6px)';
-        b.style.transform = `translateY(0)`;
-        b.style.transition = 'none';
-        // animate via CSS using inline keyframes injection to avoid too many global keyframes
         b.style.animation = `bubbleRise ${duration}s linear ${delay}s infinite`;
         frag.appendChild(b);
       }
       bubbleLayer.appendChild(frag);
 
-      // ensure a single keyframe exists for bubbleRise (once)
       if(!document.getElementById('bubbleRiseKeyframes')){
         const s = document.createElement('style'); s.id = 'bubbleRiseKeyframes';
         s.textContent = `
@@ -400,9 +551,7 @@ canvas{border-radius:8px;display:block}
       }
     }
 
-    /* caustics subtle animation (tweak background positions) */
     function startCaustics(){
-      // gently shift the caustics background over time for a moving-light feeling
       let t = 0;
       function step(){
         t += 0.0025;
@@ -411,6 +560,38 @@ canvas{border-radius:8px;display:block}
       }
       step();
     }
+
+    /* ------------------------------
+       Initialize background effects
+       ------------------------------ */
+    function initBackground(){
+      const count = FISH_COUNT;
+      spawnSchool(count);
+      spawnBubbles(Math.max(10, Math.floor(count * 0.7)));
+      startCaustics();
+      // start fish update loop
+      lastTime = performance.now();
+      if(animationFrameId) cancelAnimationFrame(animationFrameId);
+      animationFrameId = requestAnimationFrame(fishStep);
+    }
+
+    // start background on load
+    initBackground();
+
+    // expose respawn function for debugging/dev
+    window.__respawnBackground = (n) => {
+      const c = n || FISH_COUNT;
+      spawnSchool(c);
+      spawnBubbles(Math.max(10, Math.floor(c * 0.7)));
+    };
+
+    // handle resize: adjust bounds and gently reposition fish to stay in view
+    window.addEventListener('resize', () => {
+      for(const f of fishList){
+        f.pos.x = Math.min(window.innerWidth - 10, f.pos.x);
+        f.pos.y = Math.min(window.innerHeight - 10, Math.max(5, f.pos.y));
+      }
+    });
 
     /* ------------------------------
        Model & webcam code (kept & lightly cleaned)
@@ -476,90 +657,4 @@ canvas{border-radius:8px;display:block}
     function extractCleanScore(predictions){
       const lower = predictions.map(p => p.className.toLowerCase());
       const findIdx = (rx) => lower.findIndex(n => rx.test(n));
-      const cleanIdx = findIdx(/clean|clear|pure|safe/);
-      if(cleanIdx >= 0) return predictions[cleanIdx].probability;
-      const dirtyIdx = findIdx(/dirty|contamin|pollut|turbid|unclean/);
-      if(dirtyIdx >= 0) return 1 - predictions[dirtyIdx].probability;
-      if(predictions.length === 3) return predictions[0].probability;
-      const maxp = predictions.reduce((a,b)=> a.probability>=b.probability?a:b);
-      return maxp.probability;
-    }
-
-    function updateGauge(score){
-      const pct = Math.round(score * 100);
-      gaugePercent.textContent = pct + '%';
-      const dash = (score * arcLength);
-      gaugeArc.setAttribute('stroke-dasharray', `${dash} ${arcLength}`);
-      let color = 'var(--clean-blue)';
-      if(score >= 0.8) color = 'var(--clean-blue)'; else if(score >= 0.4) color = 'var(--maybe-yellow)'; else color = 'var(--dirty-red)';
-      gaugeArc.setAttribute('stroke', color);
-    }
-
-    function setGlow(on){
-      if(on){ pageRoot.classList.add('glow-on'); setTimeout(()=> pageRoot.classList.remove('glow-on'), 700); }
-      else pageRoot.classList.remove('glow-on');
-    }
-
-    async function predictOnce(){
-      if(!model || !webcam) return;
-      try{
-        const predictions = await model.predict(webcam.canvas);
-        predictions.forEach((p,i) => {
-          const node = labelContainer.childNodes[i];
-          if(node) node.textContent = `${p.className}: ${p.probability.toFixed(2)}`;
-        });
-
-        const best = predictions.reduce((a,b)=> a.probability>=b.probability?a:b);
-        const score = extractCleanScore(predictions);
-        updateGauge(score);
-        safeSetStatus(`Top: ${best.className} (${best.probability.toFixed(2)})`);
-        srResults.textContent = `Prediction: ${best.className}, confidence ${Math.round(best.probability*100)} percent`;
-        try{ localStorage.setItem('lastResult', best.className); }catch(e){}
-        if(score >= 0.8) setGlow(true);
-        const scale = 0.85 + score * 0.6;
-        ripple.style.transform = `translate(-50%,-50%) scale(${scale})`;
-      }catch(err){ console.error('Predict error', err); }
-    }
-
-    function loop(){
-      if(!running) return;
-      try{ webcam.update(); predictOnce(); }catch(e){ console.error(e); }
-      animationLoopId = requestAnimationFrame(loop);
-    }
-
-    /* ------------------------------
-       Wiring UI events
-       ------------------------------ */
-    [startBtn, startBtnSmall].forEach(b => { if(b) b.addEventListener('click', () => startCameraAndRun()); });
-    stopBtn && stopBtn.addEventListener('click', stopCamera);
-    retryBtn && retryBtn.addEventListener('click', async ()=>{ safeSetStatus('Retrying model...'); await loadModel(); });
-
-    // sensible initial state
-    setButtons(false);
-    showLoading(true);
-    loadModel().then(()=> hideLoadingAfter(200)).catch(()=> hideLoadingAfter(200));
-    try{ const lastResult = localStorage.getItem('lastResult'); if(lastResult) modelStatusEl.textContent = 'Last: ' + lastResult; }catch(e){}
-
-    setTimeout(()=>{ if(loadingEl && loadingEl.style.display !== 'none' && !model) loadingEl.querySelector('.loader-card div').textContent = 'Click Start to try again.'; },15000);
-
-    /* ------------------------------
-       Kickoff background effects
-       ------------------------------ */
-    function initBackground(){
-      const count = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--fish-count')) || 20;
-      spawnFish(count);
-      spawnBubbles(Math.max(12, Math.floor(count * 0.7)));
-      startCaustics();
-    }
-
-    // on DOM ready (deferred script should be okay)
-    initBackground();
-
-    // allow a simple API to respawn fish (useful while developing)
-    window.__respawnBackground = () => { initBackground(); };
-
-  })();
-  </script>
-
-</body>
-</html>
+      const cleanIdx = findIdx(/clean|clear|pure|s
